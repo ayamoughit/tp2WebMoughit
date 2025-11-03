@@ -4,6 +4,8 @@ import jakarta.faces.context.FacesContext;
 import jakarta.faces.model.SelectItem;
 import jakarta.faces.view.ViewScoped;
 import jakarta.inject.Inject;
+import ma.emsi.moughit.tp2webmoughit.llm.LlmClient;
+
 import jakarta.inject.Named;
 
 import java.io.Serializable;
@@ -56,6 +58,9 @@ public class Bb implements Serializable {
      */
     @Inject
     private FacesContext facesContext;
+
+    @Inject
+    private LlmClient llmClient;
 
     /**
      * Obligatoire pour un bean CDI (classe gérée par CDI), s'il y a un autre constructeur.
@@ -120,17 +125,24 @@ public class Bb implements Serializable {
             facesContext.addMessage(null, message);
             return null;
         }
-        // Entourer la réponse avec "||".
-        this.reponse = "||";
-        // Si la conversation n'a pas encore commencé, ajouter le rôle système au début de la réponse
-        if (this.conversation.isEmpty()) {
-            // Ajouter le rôle système au début de la réponse
-            this.reponse += roleSysteme.toUpperCase(Locale.FRENCH) + "\n";
-            // Invalide le bouton pour changer le rôle système
-            this.roleSystemeChangeable = false;
+
+        // If it's the first request and a system role is defined, set it in the LlmClient
+        if (this.conversation.isEmpty() && roleSysteme != null && !roleSysteme.isBlank()) {
+            llmClient.setSystemRole(roleSysteme);
+            this.roleSystemeChangeable = false; // Invalidate the button to change the system role
         }
-        this.reponse += question.toLowerCase(Locale.FRENCH) + "||";
-        // La conversation contient l'historique des questions-réponses depuis le début.
+
+        try {
+            // Directly call the LlmClient's chat method with the user's question
+            this.reponse = llmClient.chat(question);
+        } catch (Exception e) {
+            FacesMessage message = new FacesMessage(FacesMessage.SEVERITY_ERROR,
+                    "Exception lors de l'appel LLM", e.getMessage());
+            facesContext.addMessage(null, message);
+            this.reponse = "Exception: " + e.getMessage();
+        }
+
+        // Mettre à jour l'historique de la conversation.
         afficherConversation();
         return null;
     }

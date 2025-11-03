@@ -1,9 +1,14 @@
 package ma.emsi.moughit.tp2webmoughit.llm;
 
+import dev.langchain4j.memory.ChatMemory;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
+import dev.langchain4j.service.AiServices;
+import dev.langchain4j.data.message.SystemMessage;
+
 import jakarta.enterprise.context.Dependent;
-import jakarta.ws.rs.client.*;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
+import jakarta.annotation.PreDestroy;
 
 import java.io.Serializable;
 
@@ -19,39 +24,59 @@ import java.io.Serializable;
  */
 @Dependent
 public class LlmClient implements Serializable {
-    // Clé pour l'API du LLM
-    private final String key;
-    // Client REST. Facilite les échanges avec une API REST.
-    private Client clientRest; // Pour pouvoir le fermer
-    // Représente un endpoint de serveur REST
-    private final WebTarget target;
+
+    private String systemRole;
+    private Assistant assistant;
+    private ChatMemory chatMemory;
 
     public LlmClient() {
         // Récupère la clé secrète pour travailler avec l'API du LLM, mise dans une variable d'environnement
-        this.key = System.getenv("GEMINI_KEY");
-        // du système d'exploitation.
+        String geminiKey = System.getenv("GEMINI_KEY");
+        // Crée une instance de type ChatModel qui représente le LLM.
+        ChatModel model = GoogleAiGeminiChatModel.builder()
+                .modelName("gemini-2.5-flash") 
+                .apiKey(geminiKey)
+                .build();
 
-        // Client REST pour envoyer des requêtes vers les endpoints de l'API du LLM
-        this.clientRest = ClientBuilder.newClient();
-        // Endpoint REST pour envoyer la question à l'API.
-        // L'URL à trouver a été utilisé dans la commande curl pour tester la clé secrète.
-        // Elle se trouve aussi dans le support de cours.
-        this.target = clientRest.target(("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")).queryParam("key",this.key);
+        // Configure la mémoire pour garder jusqu'à 10 messages
+        this.chatMemory = MessageWindowChatMemory.withMaxMessages(10);
+
+        // Crée l'assistant en utilisant la classe AiServices
+        this.assistant = AiServices.builder(Assistant.class)
+                .chatModel(model)
+                .chatMemory(chatMemory)
+                .build();
     }
 
     /**
-     * Envoie une requête à l'API de Gemini.
-     *
-     * @param requestEntity le corps de la requête (en JSON).
-     * @return réponse REST de l'API (corps en JSON).
+     * Setter pour le rôle système.
+     * Ajoute ce rôle à la mémoire comme SystemMessage.
+     * Vide la mémoire avant de définir un nouveau rôle système pour un nouveau contexte.
+     * @param systemRole Le rôle système à définir.
      */
-    public Response envoyerRequete(Entity requestEntity) {
-        Invocation.Builder request = target.request(MediaType.APPLICATION_JSON_TYPE);
-        // Envoie la requête POST au LLM
-        return request.post(requestEntity);
+    public void setSystemRole(String systemRole) {
+        this.systemRole = systemRole;
+        if (this.chatMemory != null) {
+            this.chatMemory.clear(); // Clear memory when system role changes
+            this.chatMemory.add(SystemMessage.from(systemRole));
+        }
     }
 
-    public void closeClient() {
-        this.clientRest.close();
+    /**
+     * Envoie une requête au LLM et reçoit une réponse en retour.
+     * @param prompt La question à envoyer au LLM.
+     * @return La réponse du LLM.
+     */
+    public String chat(String prompt) {
+        if (this.assistant == null) {
+            throw new IllegalStateException("LlmClient has not been initialized. Check @PostConstruct method.");
+        }
+        return this.assistant.chat(prompt);
+    }
+
+    @PreDestroy
+    public void destroy() {
+        // Clean up resources if necessary
+        // For LangChain4j models, there's usually no explicit close method needed here.
     }
 }
