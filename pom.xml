@@ -13,8 +13,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.target>21</maven.compiler.target>
-        <maven.compiler.source>21</maven.compiler.source>
-        <junit.version>5.10.2</junit.version>
+        <maven.compiler.source>21</maven.compiler.source
         <langchain4j.version>1.5.0</langchain4j.version>
     </properties>
 
